@@ -25,7 +25,7 @@
         }
     ],
     "replace": {
-        "scssphp/scssphp": "1.13.0"
+        "scssphp/scssphp": "^1.12"
     },
     "autoload": {
         "psr-4": { "ScssPhp\\ScssPhp\\": "src/" }
