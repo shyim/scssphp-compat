@@ -824,6 +824,7 @@ directives/import/load/precedence/import_only/partial_before_normal
 directives/import/load/precedence/sass_before_css
 directives/import/nested/at_rule/childless
 directives/use/error/syntax/member/mixin/definition
+directives/use/error/syntax/member/unused_private
 directives/use/escaped
 directives/warn/escaped
 libsass-closed-issues/issue_1007

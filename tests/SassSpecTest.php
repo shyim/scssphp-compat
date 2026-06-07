@@ -43,7 +43,7 @@ class SassSpecTest extends TestCase
         self::removeDirectory($this->dirToClean);
     }
 
-    protected function sassSpecDir()
+    protected static function sassSpecDir()
     {
         return dirname(__DIR__) . '/vendor/sass/sass-spec/spec';
     }
@@ -117,7 +117,7 @@ class SassSpecTest extends TestCase
      *
      * @return array
      */
-    protected function resetExclusionList()
+    protected static function resetExclusionList()
     {
         self::$exclusionList = [];
         self::$warningExclusionList = [];
@@ -397,7 +397,7 @@ class SassSpecTest extends TestCase
         }
     }
 
-    protected function reformatOutput($css)
+    protected static function reformatOutput($css)
     {
         $css = str_replace("}\n\n", "}\n", $css);
         $css = str_replace(",\n", ", ", $css);
@@ -429,14 +429,14 @@ class SassSpecTest extends TestCase
     /**
      * @return array
      */
-    public function provideTests()
+    public static function provideTests()
     {
-        $dir    = $this->sassSpecDir();
+        $dir    = self::sassSpecDir();
         $specs  = [];
         $subdir = '';
 
         if (getenv('BUILD')) {
-            $this->resetExclusionList();
+            self::resetExclusionList();
         }
 
         for ($depth = 0; $depth < 7; $depth++) {
@@ -521,17 +521,17 @@ class SassSpecTest extends TestCase
 
                         case 'output.css':
                             if (! $hasOutput) {
-                                $output = $this->reformatOutput($part);
+                                $output = self::reformatOutput($part);
                                 $hasOutput = true;
                             }
                             break;
 
                         case 'output-libsass.css':
-                            $alternativeOutputs['libsass'] = $this->reformatOutput($part);
+                            $alternativeOutputs['libsass'] = self::reformatOutput($part);
                             break;
 
                         case 'output-dart-sass.css':
-                            $alternativeOutputs['dart-sass'] = $this->reformatOutput($part);
+                            $alternativeOutputs['dart-sass'] = self::reformatOutput($part);
                             break;
 
                         case 'error':

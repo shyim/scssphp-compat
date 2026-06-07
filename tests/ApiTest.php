@@ -285,7 +285,7 @@ class ApiTest extends TestCase
         $this->assertEquals($expected, $this->compile($scss));
     }
 
-    public function provideSetVariables()
+    public static function provideSetVariables()
     {
         return [
             [

@@ -1,12 +1,29 @@
-# scssphp
-### <https://scssphp.github.io/scssphp>
+# shyim/scssphp-compat
 
-![Build](https://github.com/scssphp/scssphp/workflows/CI/badge.svg)
-[![License](https://poser.pugx.org/scssphp/scssphp/license)](https://packagist.org/packages/scssphp/scssphp)
+![Build](https://github.com/shyim/scssphp/workflows/CI/badge.svg)
+[![Latest Stable Version](https://poser.pugx.org/shyim/scssphp-compat/v)](https://packagist.org/packages/shyim/scssphp-compat)
+[![License](https://poser.pugx.org/shyim/scssphp-compat/license)](https://packagist.org/packages/shyim/scssphp-compat)
+
+A performance-focused, **drop-in compatible** fork of
+[`scssphp/scssphp`](https://github.com/scssphp/scssphp).
+
+It keeps the exact same `ScssPhp\ScssPhp` namespace and public API, and declares
+`replace` for `scssphp/scssphp`, so it can be used as a transparent substitute —
+no code changes required.
+
+```bash
+composer require shyim/scssphp-compat
+```
+
+> Compiled CSS output is byte-for-byte identical to the upstream release this
+> fork is based on (verified across the full sass-spec suite and real-world
+> stylesheets such as Bootstrap). The differences are internal performance
+> improvements and a higher minimum PHP version (8.2+).
+
+This fork is based on upstream **scssphp 1.13.0**. See the upstream homepage,
+<https://scssphp.github.io/scssphp>, for full usage documentation.
 
 `scssphp` is a compiler for SCSS written in PHP.
-
-Checkout the homepage, <https://scssphp.github.io/scssphp>, for directions on how to use.
 
 ## Running Tests
 

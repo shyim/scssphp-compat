@@ -1,0 +1,64 @@
+@use "sass:math";
+
+// Bounding
+.bounding {
+    ceil: math.ceil(4.1);
+    clamp: math.clamp(-1, 0, 1);
+    floor: math.floor(4.8);
+    round: math.round(4.5);
+    abs: math.abs(-7px);
+    max: math.max(1px, 2px, 3px);
+    min: math.min(3em, 1em, 2em);
+}
+
+// Distance
+.distance {
+    hypot: math.hypot(3, 4);
+}
+
+// Exponential
+.exponential {
+    log: math.log(100, 10);
+    log-natural: math.log(2.718281828459045);
+    pow: math.pow(2, 8);
+    sqrt: math.sqrt(16);
+}
+
+// Trigonometry
+.trigonometry {
+    cos: math.cos(0);
+    sin: math.sin(90deg);
+    tan: math.tan(0);
+    acos: math.acos(1);
+    asin: math.asin(0);
+    atan: math.atan(0);
+    atan2: math.atan2(1, 1);
+}
+
+// Unit
+.unit {
+    compatible: math.compatible(2px, 1cm);
+    is-unitless: math.is-unitless(100);
+    unit: math.unit(10px);
+}
+
+// Other
+.other {
+    div: math.div(6, 3);
+    div-units: math.div(10px, 2);
+    percentage: math.percentage(0.2);
+}
+
+// Constants
+.constants {
+    pi: math.$pi;
+    e: math.$e;
+}
+
+// Namespace aliasing
+@use "sass:math" as m;
+
+.aliased {
+    value: m.div(9, 3);
+    pi: m.$pi;
+}

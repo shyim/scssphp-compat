@@ -166,6 +166,44 @@ file_put_contents('/var/www/vhost/my-style.css', $result->getCss());
 The Compiler supports several extension points for advanced usages. They are
 documented in [the documentation about extension points](./extending/).
 
+### Performance
+
+Compilation is CPU-bound: the bulk of the time is spent evaluating the SCSS
+value tree (variables, arithmetic, functions, loops), not parsing or writing
+output. The most effective way to speed it up does not require any code change
+on your side — enable OPcache with the JIT compiler in the PHP process that runs
+the compilation.
+
+For CLI usage (e.g. `bin/pscss` or a build script):
+
+```
+php -d opcache.enable_cli=1 -d opcache.jit_buffer_size=128M -d opcache.jit=tracing bin/pscss input.scss
+```
+
+For long-running processes (PHP-FPM, workers), enable it in `php.ini`:
+
+```ini
+opcache.enable=1
+opcache.jit_buffer_size=128M
+opcache.jit=tracing
+```
+
+On a large stylesheet such as Bootstrap, enabling the tracing JIT typically
+reduces compilation time by around 20-25%. OPcache also avoids re-parsing the
+scssphp source files on every request in a web context.
+
+If you compile the same stylesheets repeatedly (e.g. a watch/rebuild loop), pass
+a cache directory to the Compiler. The compiled result is then reused as long as
+the source files (and their imports) are unchanged:
+
+```php
+use ScssPhp\ScssPhp\Compiler;
+
+$compiler = new Compiler(['cacheDir' => __DIR__ . '/cache']);
+
+echo $compiler->compileString($content)->getCss();
+```
+
 ### Security Considerations
 
 If your web application compiles SCSS on-the-fly, you need to handle any potential

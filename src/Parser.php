@@ -140,7 +140,7 @@ class Parser
      * @param bool                 $cssOnly
      * @param LoggerInterface|null $logger
      */
-    public function __construct($sourceName, $sourceIndex = 0, $encoding = 'utf-8', Cache $cache = null, $cssOnly = false, LoggerInterface $logger = null)
+    public function __construct($sourceName, $sourceIndex = 0, $encoding = 'utf-8', ?Cache $cache = null, $cssOnly = false, ?LoggerInterface $logger = null)
     {
         $this->sourceName       = $sourceName ?: '(stdin)';
         $this->sourceIndex      = $sourceIndex;
@@ -537,6 +537,35 @@ class Parser
                 } else {
                     $this->append($child, $s);
                 }
+
+                return true;
+            }
+
+            $this->seek($s);
+
+            if (
+                $this->literal('@use', 4) &&
+                $this->string($url)
+            ) {
+                ! $this->cssOnly || $this->assertPlainCssValid(false, $s);
+
+                $namespace = null;
+
+                if ($this->literal('as', 2)) {
+                    if ($this->matchChar('*')) {
+                        $namespace = '*';
+                    } elseif ($this->keyword($asName)) {
+                        $namespace = $asName;
+                    } else {
+                        $this->throwParseError('Expected identifier or "*" after "as".');
+                    }
+                }
+
+                if (! $this->end()) {
+                    $this->throwParseError('@use only supports built-in "sass:*" modules in ScssPhp.');
+                }
+
+                $this->append([Type::T_USE, $url, $namespace], $s);
 
                 return true;
             }
@@ -2717,6 +2746,32 @@ class Parser
         }
 
         if ($this->keyword($keyword, false)) {
+            // Namespaced module member access, e.g. `math.div(...)` or `math.$pi`.
+            if (isset($this->buffer[$this->count]) && $this->buffer[$this->count] === '.') {
+                $ss = $this->count;
+                $this->count++;
+
+                if ($this->matchChar('$', false) && $this->keyword($member, false)) {
+                    if ($this->allowVars) {
+                        $out = [Type::T_VARIABLE, $keyword . '.' . $member];
+                    } else {
+                        $out = [Type::T_KEYWORD, $keyword . '.$' . $member];
+                    }
+                    $this->whitespace();
+
+                    return true;
+                }
+
+                $this->seek($ss);
+                $this->count++;
+
+                if ($this->keyword($member, false) && $this->func($keyword . '.' . $member, $out)) {
+                    return true;
+                }
+
+                $this->seek($ss);
+            }
+
             if ($this->func($keyword, $out)) {
                 return true;
             }

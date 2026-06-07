@@ -36,6 +36,7 @@ use ScssPhp\ScssPhp\Formatter\OutputBlock;
 use ScssPhp\ScssPhp\Logger\LoggerInterface;
 use ScssPhp\ScssPhp\Logger\StreamLogger;
 use ScssPhp\ScssPhp\Node\Number;
+use ScssPhp\ScssPhp\SassModule\MathModule;
 use ScssPhp\ScssPhp\SourceMap\SourceMapGenerator;
 use ScssPhp\ScssPhp\Util\Path;
 
@@ -184,6 +185,14 @@ class Compiler
      * @phpstan-var array<string, array{0: callable, 1: string[]|null}>
      */
     protected $userFunctions = [];
+    /**
+     * Built-in modules loaded via `@use "sass:..."`, mapped from the namespace
+     * under which they are accessed to the module name. The special namespace
+     * `*` means the module's members are available without a prefix.
+     *
+     * @var array<string, string>
+     */
+    protected $loadedModules = [];
     /**
      * @var array<string, mixed>
      */
@@ -531,6 +540,7 @@ class Compiler
         $this->parsedFiles = [];
         $this->importedFiles = [];
         $this->resolvedImports = [];
+        $this->loadedModules = [];
 
         if (!\is_null($path) && is_file($path)) {
             $path = realpath($path) ?: $path;
@@ -2788,6 +2798,41 @@ class Compiler
     }
 
     /**
+     * Handle a `@use` rule. ScssPhp only supports the built-in `sass:*` modules.
+     *
+     * @param array       $urlNode   the parsed string AST holding the module URL
+     * @param string|null $namespace the requested namespace, `*`, or null to derive it
+     *
+     * @return void
+     *
+     * @throws CompilerException
+     */
+    protected function compileUse($urlNode, $namespace)
+    {
+        $url = $this->compileStringContent($this->coerceString($urlNode));
+
+        if (strpos($url, 'sass:') !== 0) {
+            throw $this->error('Only built-in "sass:*" modules are supported by @use in ScssPhp, got "%s".', $url);
+        }
+
+        $moduleName = substr($url, \strlen('sass:'));
+
+        if ($moduleName !== 'math') {
+            throw $this->error('The "sass:%s" module is not implemented in ScssPhp. Only "sass:math" is available.', $moduleName);
+        }
+
+        if ($namespace === null) {
+            $namespace = $moduleName;
+        }
+
+        if (isset($this->loadedModules[$namespace]) && $namespace !== '*') {
+            throw $this->error('This module was already loaded, so it can\'t be configured using "with".');
+        }
+
+        $this->loadedModules[$namespace] = $moduleName;
+    }
+
+    /**
      * @param array $rawPath
      * @return string
      * @throws CompilerException
@@ -2962,6 +3007,10 @@ class Compiler
                 $rawPath = $this->reduce($child[1]);
 
                 $this->compileImport($rawPath, $out);
+                break;
+
+            case Type::T_USE:
+                $this->compileUse($child[1], isset($child[2]) ? $child[2] : null);
                 break;
 
             case Type::T_DIRECTIVE:
@@ -3593,14 +3642,30 @@ EOL;
                 // 1. op[op name][left type][right type]
                 // 2. op[left type][right type] (passing the op as first arg)
                 // 3. op[op name]
-                if (\is_callable([$this, $fn = "op{$ucOpName}{$ucLType}{$ucRType}"])) {
-                    $out = $this->$fn($left, $right, $shouldEval);
-                } elseif (\is_callable([$this, $fn = "op{$ucLType}{$ucRType}"])) {
-                    $out = $this->$fn($op, $left, $right, $shouldEval);
-                } elseif (\is_callable([$this, $fn = "op{$ucOpName}"])) {
+                // The method-existence checks are memoized because reduce() runs
+                // millions of times and method_exists() reflection dominates otherwise.
+                static $opMethodCache = [];
+
+                $fn = "op{$ucOpName}{$ucLType}{$ucRType}";
+                if (($exists = $opMethodCache[$fn] ?? null) === null) {
+                    $exists = $opMethodCache[$fn] = method_exists($this, $fn);
+                }
+                if ($exists) {
                     $out = $this->$fn($left, $right, $shouldEval);
                 } else {
-                    $out = null;
+                    $fn = "op{$ucLType}{$ucRType}";
+                    if (($exists = $opMethodCache[$fn] ?? null) === null) {
+                        $exists = $opMethodCache[$fn] = method_exists($this, $fn);
+                    }
+                    if ($exists) {
+                        $out = $this->$fn($op, $left, $right, $shouldEval);
+                    } else {
+                        $fn = "op{$ucOpName}";
+                        if (($exists = $opMethodCache[$fn] ?? null) === null) {
+                            $exists = $opMethodCache[$fn] = method_exists($this, $fn);
+                        }
+                        $out = $exists ? $this->$fn($left, $right, $shouldEval) : null;
+                    }
                 }
 
                 if (isset($out)) {
@@ -3640,9 +3705,30 @@ EOL;
                 return [Type::T_STRING, '', [$op, $exp]];
 
             case Type::T_VARIABLE:
-                return $this->reduce($this->get($value[1]));
+                $variableValue = $this->get($value[1]);
+
+                // A Number is already fully reduced, so reduce() would just return
+                // it unchanged. Variables resolve to a Number very frequently (most
+                // of the variable lookups in arithmetic-heavy stylesheets), so this
+                // short-circuit removes a large number of redundant reduce() calls.
+                if ($variableValue instanceof Number) {
+                    return $variableValue;
+                }
+
+                return $this->reduce($variableValue);
 
             case Type::T_LIST:
+                // Reducing with `&$item` forces a copy-on-write duplication of the
+                // whole list. Most lists reached here (≈90% in real stylesheets)
+                // already contain only final values, so skip the copy entirely when
+                // nothing needs reducing.
+                if (
+                    self::valueListIsReduced($value[2])
+                    && (!isset($value[3]) || !\is_array($value[3]) || self::valueListIsReduced($value[3]))
+                ) {
+                    return $value;
+                }
+
                 foreach ($value[2] as &$item) {
                     $item = $this->reduce($item);
                 }
@@ -3658,6 +3744,10 @@ EOL;
                 return $value;
 
             case Type::T_MAP:
+                if (self::valueListIsReduced($value[1]) && self::valueListIsReduced($value[2])) {
+                    return $value;
+                }
+
                 foreach ($value[1] as &$item) {
                     $item = $this->reduce($item);
                 }
@@ -3669,6 +3759,10 @@ EOL;
                 return $value;
 
             case Type::T_STRING:
+                if (self::valueListIsReduced($value[2])) {
+                    return $value;
+                }
+
                 foreach ($value[2] as &$item) {
                     if (\is_array($item) || $item instanceof Number) {
                         $item = $this->reduce($item);
@@ -3699,6 +3793,50 @@ EOL;
             default:
                 return $value;
         }
+    }
+
+    /**
+     * Whether every element of a value list is already fully reduced, so that
+     * reducing the enclosing list/map/string would be a no-op.
+     *
+     * This is intentionally conservative: any container element (which could
+     * contain something needing reduction) makes it return false, falling back
+     * to the regular reducing path. It only short-circuits when all elements are
+     * leaf values that {@see reduce()} returns unchanged.
+     *
+     * @param mixed $items
+     *
+     * @return bool
+     */
+    private static function valueListIsReduced($items)
+    {
+        if (!\is_array($items)) {
+            return true;
+        }
+
+        foreach ($items as $item) {
+            if ($item instanceof Number) {
+                continue;
+            }
+
+            if (!\is_array($item) || !isset($item[0])) {
+                // plain scalars (e.g. raw strings inside a T_STRING) are final
+                continue;
+            }
+
+            switch ($item[0]) {
+                case Type::T_KEYWORD:
+                case Type::T_NULL:
+                case Type::T_COLOR:
+                case Type::T_NUMBER:
+                    break;
+
+                default:
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -3765,6 +3903,23 @@ EOL;
 
                 if (! isset($returnValue)) {
                     return $this->fncall([Type::T_FUNCTION, $name, [Type::T_LIST, ',', []]], $argValues);
+                }
+
+                return $returnValue;
+
+            // built-in `sass:*` module member
+            case 'module':
+                list(,,$qualifiedName, $moduleName, $prototype) = $functionReference;
+                $member = substr($qualifiedName, strpos($qualifiedName, '.') + 1);
+
+                $fn = function ($sorted, $kwargs) use ($moduleName, $member) {
+                    return $this->callModuleFunction($moduleName, $member, $sorted);
+                };
+
+                $returnValue = $this->callNativeFunction($qualifiedName, $fn, $prototype, $argValues);
+
+                if (! isset($returnValue)) {
+                    return static::$defaultValue;
                 }
 
                 return $returnValue;
@@ -3916,6 +4071,13 @@ EOL;
      */
     protected function getFunctionReference($name, $safeCopy = false)
     {
+        // Namespaced module member, e.g. `math.div`.
+        if (strpos($name, '.') !== false) {
+            list($namespace, $member) = explode('.', $name, 2);
+
+            return $this->getModuleFunctionReference($namespace, $member);
+        }
+
         // SCSS @function
         if ($func = $this->get(static::$namespaces['function'] . $name, false)) {
             if ($safeCopy) {
@@ -3995,9 +4157,106 @@ EOL;
             return [Type::T_FUNCTION_REFERENCE, 'native', $name, $f, $prototype];
         }
 
+        // Members brought into the global scope through `@use "..." as *`.
+        if (isset($this->loadedModules['*'])) {
+            $member = strtolower(str_replace('_', '-', $name));
+
+            if ($this->loadedModules['*'] === 'math' && MathModule::hasFunction($member)) {
+                return [Type::T_FUNCTION_REFERENCE, 'module', "*.$member", 'math', MathModule::getPrototype($member)];
+            }
+        }
+
         return static::$null;
     }
 
+    /**
+     * Resolve a namespaced module member to a function reference.
+     *
+     * @param string $namespace
+     * @param string $member
+     *
+     * @return array
+     *
+     * @throws CompilerException
+     */
+    protected function getModuleFunctionReference($namespace, $member)
+    {
+        if (!isset($this->loadedModules[$namespace])) {
+            throw $this->error('There is no module with the namespace "%s".', $namespace);
+        }
+
+        $module = $this->loadedModules[$namespace];
+
+        if ($module === 'math') {
+            $member = strtolower(str_replace('_', '-', $member));
+
+            if (!MathModule::hasFunction($member)) {
+                throw $this->error('Undefined function "%s.%s".', $namespace, $member);
+            }
+
+            return [Type::T_FUNCTION_REFERENCE, 'module', "$namespace.$member", $module, MathModule::getPrototype($member)];
+        }
+
+        throw $this->error('There is no module with the namespace "%s".', $namespace);
+    }
+
+    /**
+     * Invoke a member function of a built-in module with already-sorted arguments.
+     *
+     * @param string              $moduleName
+     * @param string              $member     kebab-case member name
+     * @param array<array|Number> $args       positional arguments
+     *
+     * @return array|Number
+     */
+    protected function callModuleFunction($moduleName, $member, array $args)
+    {
+        if ($moduleName === 'math') {
+            return MathModule::call($this, $member, $args);
+        }
+
+        throw $this->error('There is no module named "%s".', $moduleName);
+    }
+
+    /**
+     * Resolve a namespaced module variable, e.g. `math.$pi`.
+     *
+     * @param string $name        the namespaced name `namespace.member`
+     * @param bool   $shouldThrow
+     *
+     * @return mixed|null
+     *
+     * @throws CompilerException
+     */
+    protected function getModuleVariable($name, $shouldThrow = true)
+    {
+        list($namespace, $member) = explode('.', $name, 2);
+
+        if (!isset($this->loadedModules[$namespace])) {
+            if ($shouldThrow) {
+                throw $this->error('There is no module with the namespace "%s".', $namespace);
+            }
+
+            return null;
+        }
+
+        $module = $this->loadedModules[$namespace];
+
+        if ($module === 'math') {
+            $variables = MathModule::getVariables();
+            $member = str_replace('_', '-', $member);
+
+            if (isset($variables[$member])) {
+                return $variables[$member];
+            }
+        }
+
+        if ($shouldThrow) {
+            throw $this->error('Undefined variable $%s.$%s.', $namespace, $member);
+        }
+
+        return null;
+    }
 
     /**
      * Normalize name
@@ -4008,7 +4267,15 @@ EOL;
      */
     protected function normalizeName($name)
     {
-        return str_replace('-', '_', $name);
+        // Names repeat heavily while the distinct set is tiny, so memoize the
+        // dash-to-underscore normalization rather than running str_replace each
+        // time. Also skips the call entirely when there is no dash.
+        static $cache = [];
+        if (isset($cache[$name])) {
+            return $cache[$name];
+        }
+
+        return $cache[$name] = strpos($name, '-') !== false ? str_replace('-', '_', $name) : $name;
     }
 
     /**
@@ -4492,6 +4759,12 @@ EOL;
      */
     public function escapeNonPrintableChars($string, $inKeyword = false)
     {
+        // Fast path: the vast majority of strings contain no control characters
+        // (code points < 32), so skip the expensive multi-needle str_replace.
+        if (strcspn($string, "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f") === \strlen($string)) {
+            return $string;
+        }
+
         static $replacement = [];
         if (empty($replacement[$inKeyword])) {
             for ($i = 0; $i < 32; $i++) {
@@ -5052,7 +5325,7 @@ EOL;
      *
      * @return array
      */
-    protected function multiplyMedia(Environment $env = null, $childQueries = null)
+    protected function multiplyMedia(?Environment $env = null, $childQueries = null)
     {
         if (
             ! isset($env) ||
@@ -5144,7 +5417,7 @@ EOL;
      *
      * @return \ScssPhp\ScssPhp\Compiler\Environment
      */
-    protected function pushEnv(Block $block = null)
+    protected function pushEnv(?Block $block = null)
     {
         $env = new Environment();
         $env->parent = $this->env;
@@ -5208,12 +5481,12 @@ EOL;
      *
      * @return void
      */
-    protected function set($name, $value, $shadow = false, Environment $env = null, $valueUnreduced = null)
+    protected function set($name, $value, $shadow = false, ?Environment $env = null, $valueUnreduced = null)
     {
         $name = $this->normalizeName($name);
 
         if (! isset($env)) {
-            $env = $this->getStoreEnv();
+            $env = isset($this->storeEnv) ? $this->storeEnv : $this->env;
         }
 
         if ($shadow) {
@@ -5236,7 +5509,10 @@ EOL;
     protected function setExisting($name, $value, Environment $env, $valueUnreduced = null)
     {
         $storeEnv = $env;
-        $specialContentKey = static::$namespaces['special'] . 'content';
+        static $specialContentKey;
+        if ($specialContentKey === null) {
+            $specialContentKey = static::$namespaces['special'] . 'content';
+        }
 
         $hasNamespace = $name[0] === '^' || $name[0] === '@' || $name[0] === '%';
 
@@ -5314,16 +5590,36 @@ EOL;
      *
      * @return mixed|null
      */
-    public function get($name, $shouldThrow = true, Environment $env = null, $unreduced = false)
+    public function get($name, $shouldThrow = true, ?Environment $env = null, $unreduced = false)
     {
-        $normalizedName = $this->normalizeName($name);
-        $specialContentKey = static::$namespaces['special'] . 'content';
-
-        if (! isset($env)) {
-            $env = $this->getStoreEnv();
+        // Variable names repeat heavily (hundreds of lookups per name in a large
+        // stylesheet) while the distinct set is tiny. Decode the raw name once
+        // (module-variable flag, normalized form, namespace flag) and memoize it
+        // so each lookup avoids the repeated strpos()/str_replace()/char checks.
+        static $nameCache = [];
+        if (isset($nameCache[$name])) {
+            list($isModuleVariable, $normalizedName, $hasNamespace) = $nameCache[$name];
+        } else {
+            $firstChar = isset($name[0]) ? $name[0] : '';
+            $hasNamespace = $firstChar === '^' || $firstChar === '@' || $firstChar === '%';
+            // Namespaced module variable, e.g. `math.$pi` (parsed as `math.pi`).
+            $isModuleVariable = !$hasNamespace && is_string($name) && strpos($name, '.') !== false;
+            $normalizedName = strpos($name, '-') !== false ? str_replace('-', '_', $name) : $name;
+            $nameCache[$name] = [$isModuleVariable, $normalizedName, $hasNamespace];
         }
 
-        $hasNamespace = $normalizedName[0] === '^' || $normalizedName[0] === '@' || $normalizedName[0] === '%';
+        if ($isModuleVariable) {
+            return $this->getModuleVariable($name, $shouldThrow);
+        }
+
+        static $specialContentKey;
+        if ($specialContentKey === null) {
+            $specialContentKey = static::$namespaces['special'] . 'content';
+        }
+
+        if (! isset($env)) {
+            $env = isset($this->storeEnv) ? $this->storeEnv : $this->env;
+        }
 
         $maxDepth = 10000;
 
@@ -5363,6 +5659,16 @@ EOL;
             }
         }
 
+        // Variables brought into the global scope through `@use "..." as *`.
+        if (isset($this->loadedModules['*']) && $this->loadedModules['*'] === 'math') {
+            $variables = MathModule::getVariables();
+            $member = str_replace('_', '-', $name);
+
+            if (isset($variables[$member])) {
+                return $variables[$member];
+            }
+        }
+
         if ($shouldThrow) {
             throw $this->error("Undefined variable \$$name" . ($maxDepth <= 0 ? ' (infinite recursion)' : ''));
         }
@@ -5379,7 +5685,7 @@ EOL;
      *
      * @return bool
      */
-    protected function has($name, Environment $env = null)
+    protected function has($name, ?Environment $env = null)
     {
         return ! \is_null($this->get($name, false, $env));
     }
@@ -6363,7 +6669,7 @@ EOL;
         if (\is_null($sorted_kwargs)) {
             return null;
         }
-        @list($sorted, $kwargs) = $sorted_kwargs;
+        list($sorted, $kwargs) = $sorted_kwargs;
 
         if ($name !== 'if') {
             foreach ($sorted as &$val) {
@@ -6371,9 +6677,10 @@ EOL;
                     $val = $this->reduce($val, true);
                 }
             }
+            unset($val);
         }
 
-        $returnValue = \call_user_func($function, $sorted, $kwargs);
+        $returnValue = $function($sorted, $kwargs);
 
         if (! isset($returnValue)) {
             return null;
@@ -6471,7 +6778,8 @@ EOL;
         }
 
         // specific cases ?
-        if (\in_array($functionName, ['libRgb', 'libRgba', 'libHsl', 'libHsla'])) {
+        static $colorFunctions = ['libRgb' => true, 'libRgba' => true, 'libHsl' => true, 'libHsla' => true];
+        if (isset($colorFunctions[$functionName])) {
             // notation 100 127 255 / 0 is in fact a simple list of 4 values
             foreach ($args as $k => $arg) {
                 if (!isset($arg[1])) {
@@ -6489,7 +6797,13 @@ EOL;
             $prototypes = [$prototypes];
         }
 
-        $parsedPrototypes = array_map([$this, 'parseFunctionPrototype'], $prototypes);
+        // Most native functions declare a single prototype; avoid the array_map
+        // callback machinery for that common case.
+        if (\count($prototypes) === 1) {
+            $parsedPrototypes = [$this->parseFunctionPrototype(reset($prototypes))];
+        } else {
+            $parsedPrototypes = array_map([$this, 'parseFunctionPrototype'], $prototypes);
+        }
         assert(!empty($parsedPrototypes));
         $matchedPrototype = $this->selectFunctionPrototype($parsedPrototypes, \count($positionalArgs), $names);
 
@@ -6546,6 +6860,15 @@ EOL;
      */
     private function parseFunctionPrototype(array $prototype)
     {
+        // Prototypes are static per registered function but this method is called
+        // (via array_map) on every native function invocation, including parsing
+        // default values with a Parser. Memoize on the prototype's string content.
+        static $cache = [];
+        $cacheKey = implode("\x00", $prototype);
+        if (isset($cache[$cacheKey])) {
+            return $cache[$cacheKey];
+        }
+
         static $parser = null;
 
         $arguments = [];
@@ -6582,7 +6905,7 @@ EOL;
             }
         }
 
-        return [
+        return $cache[$cacheKey] = [
             'arguments' => $arguments,
             'rest_argument' => $restArgument,
         ];
@@ -7181,8 +7504,19 @@ EOL;
      */
     protected function coerceForExpression($value)
     {
-        if ($color = $this->coerceColor($value)) {
-            return $color;
+        // Only colors, color-like lists and keywords can ever coerce to a color.
+        // Skipping the call for everything else avoids a hot function frame in reduce().
+        if ($value instanceof Number) {
+            return $value;
+        }
+
+        switch ($value[0]) {
+            case Type::T_COLOR:
+            case Type::T_LIST:
+            case Type::T_KEYWORD:
+                if ($color = $this->coerceColor($value)) {
+                    return $color;
+                }
         }
 
         return $value;
@@ -7249,8 +7583,8 @@ EOL;
 
                 $name = strtolower($value[1]);
 
-                // hexa color?
-                if (preg_match('/^#([0-9a-f]+)$/i', $name, $m)) {
+                // hexa color? (cheap first-char guard before the regex)
+                if (isset($name[0]) && $name[0] === '#' && preg_match('/^#([0-9a-f]+)$/i', $name, $m)) {
                     $nofValues = \strlen($m[1]);
 
                     if (\in_array($nofValues, [3, 4, 6, 8])) {
@@ -7360,7 +7694,7 @@ EOL;
 
         if (is_numeric($value)) {
             if ($isInt) {
-                $value = round($value);
+                $value = self::fuzzyRound($value);
             }
 
             $value = min($max, max($min, $value));
@@ -7617,11 +7951,36 @@ EOL;
             }
 
             if (!\is_int($c[$i])) {
-                $c[$i] = round($c[$i]);
+                $c[$i] = self::fuzzyRound($c[$i]);
             }
         }
 
         return $c;
+    }
+
+    /**
+     * Round a value the way Dart Sass does, tolerating the tiny floating-point
+     * errors that the HSL/HWB conversions introduce.
+     *
+     * A value within 1e-11 of a half (e.g. 229.49999999999997, which is really
+     * 229.5) is treated as that half and rounded away from zero, instead of
+     * being truncated. Mirrors Dart Sass' `fuzzyRound`.
+     *
+     * @param float $value
+     *
+     * @return float
+     */
+    private static function fuzzyRound($value)
+    {
+        $fraction = fmod($value, 1);
+
+        if ($value > 0) {
+            // fuzzyLessThan(fraction, 0.5): below 0.5 and not fuzzy-equal to it.
+            return $fraction < 0.5 && abs($fraction - 0.5) >= 1e-11 ? floor($value) : ceil($value);
+        }
+
+        // fuzzyLessThanOrEquals(fraction, 0.5): below 0.5 or fuzzy-equal to it.
+        return $fraction < 0.5 || abs($fraction - 0.5) < 1e-11 ? floor($value) : ceil($value);
     }
 
     /**

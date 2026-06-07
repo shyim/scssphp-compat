@@ -1,0 +1,45 @@
+.bounding {
+  ceil: 5;
+  clamp: 0;
+  floor: 4;
+  round: 5;
+  abs: 7px;
+  max: 3px;
+  min: 1em;
+}
+.distance {
+  hypot: 5;
+}
+.exponential {
+  log: 2;
+  log-natural: 1;
+  pow: 256;
+  sqrt: 4;
+}
+.trigonometry {
+  cos: 1;
+  sin: 1;
+  tan: 0;
+  acos: 0deg;
+  asin: 0deg;
+  atan: 0deg;
+  atan2: 45deg;
+}
+.unit {
+  compatible: true;
+  is-unitless: true;
+  unit: "px";
+}
+.other {
+  div: 2;
+  div-units: 5px;
+  percentage: 20%;
+}
+.constants {
+  pi: 3.1415926536;
+  e: 2.7182818285;
+}
+.aliased {
+  value: 3;
+  pi: 3.1415926536;
+}

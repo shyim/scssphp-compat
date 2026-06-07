@@ -1,9 +1,9 @@
 {
-    "name": "scssphp/scssphp",
+    "name": "shyim/scssphp-compat",
     "type": "library",
-    "description": "scssphp is a compiler for SCSS written in PHP.",
+    "description": "A performance-focused, drop-in compatible fork of scssphp/scssphp (a SCSS compiler written in PHP).",
     "keywords": ["css", "stylesheet", "scss", "sass", "less"],
-    "homepage": "http://scssphp.github.io/scssphp/",
+    "homepage": "https://github.com/shyim/scssphp",
     "license": [
         "MIT"
     ],
@@ -17,8 +17,16 @@
             "name": "Cédric Morin",
             "email": "cedric@yterium.com",
             "homepage": "https://github.com/Cerdic"
+        },
+        {
+            "name": "Soner Sayakci",
+            "email": "s.sayakci@gmail.com",
+            "homepage": "https://github.com/shyim"
         }
     ],
+    "replace": {
+        "scssphp/scssphp": "1.13.0"
+    },
     "autoload": {
         "psr-4": { "ScssPhp\\ScssPhp\\": "src/" }
     },
@@ -26,7 +34,7 @@
         "psr-4": { "ScssPhp\\ScssPhp\\Tests\\": "tests/" }
     },
     "require": {
-        "php": ">=5.6.0",
+        "php": ">=8.2.0",
         "ext-json": "*",
         "ext-ctype": "*"
     },
@@ -36,10 +44,10 @@
     },
     "require-dev": {
         "bamarni/composer-bin-plugin": "^1.4",
-        "phpunit/phpunit": "^5.7 || ^6.5 || ^7.5 || ^8.3 || ^9.4",
+        "phpunit/phpunit": "^11.4",
         "sass/sass-spec": "*",
         "squizlabs/php_codesniffer": "~3.5",
-        "symfony/phpunit-bridge": "^5.1",
+        "symfony/phpunit-bridge": "^7.1",
         "thoughtbot/bourbon": "^7.0",
         "twbs/bootstrap": "~5.0",
         "twbs/bootstrap4": "4.6.1",

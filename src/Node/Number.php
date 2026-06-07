@@ -234,7 +234,7 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
      */
     public function unitless()
     {
-        return \count($this->numeratorUnits) === 0 && \count($this->denominatorUnits) === 0;
+        return $this->numeratorUnits === [] && $this->denominatorUnits === [];
     }
 
     /**
@@ -410,9 +410,16 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
      */
     public function lessThan(Number $other)
     {
-        return $this->coerceUnits($other, function ($num1, $num2) {
+        if ($this->numeratorUnits === $other->numeratorUnits && $this->denominatorUnits === $other->denominatorUnits) {
+            return $this->dimension < $other->dimension;
+        }
+
+        static $op;
+        $op ??= static function ($num1, $num2) {
             return $num1 < $num2;
-        });
+        };
+
+        return $this->coerceUnits($other, $op);
     }
 
     /**
@@ -422,9 +429,16 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
      */
     public function lessThanOrEqual(Number $other)
     {
-        return $this->coerceUnits($other, function ($num1, $num2) {
+        if ($this->numeratorUnits === $other->numeratorUnits && $this->denominatorUnits === $other->denominatorUnits) {
+            return $this->dimension <= $other->dimension;
+        }
+
+        static $op;
+        $op ??= static function ($num1, $num2) {
             return $num1 <= $num2;
-        });
+        };
+
+        return $this->coerceUnits($other, $op);
     }
 
     /**
@@ -434,9 +448,16 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
      */
     public function greaterThan(Number $other)
     {
-        return $this->coerceUnits($other, function ($num1, $num2) {
+        if ($this->numeratorUnits === $other->numeratorUnits && $this->denominatorUnits === $other->denominatorUnits) {
+            return $this->dimension > $other->dimension;
+        }
+
+        static $op;
+        $op ??= static function ($num1, $num2) {
             return $num1 > $num2;
-        });
+        };
+
+        return $this->coerceUnits($other, $op);
     }
 
     /**
@@ -446,9 +467,16 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
      */
     public function greaterThanOrEqual(Number $other)
     {
-        return $this->coerceUnits($other, function ($num1, $num2) {
+        if ($this->numeratorUnits === $other->numeratorUnits && $this->denominatorUnits === $other->denominatorUnits) {
+            return $this->dimension >= $other->dimension;
+        }
+
+        static $op;
+        $op ??= static function ($num1, $num2) {
             return $num1 >= $num2;
-        });
+        };
+
+        return $this->coerceUnits($other, $op);
     }
 
     /**
@@ -458,9 +486,12 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
      */
     public function plus(Number $other)
     {
-        return $this->coerceNumber($other, function ($num1, $num2) {
+        static $op;
+        $op ??= static function ($num1, $num2) {
             return $num1 + $num2;
-        });
+        };
+
+        return $this->coerceNumber($other, $op);
     }
 
     /**
@@ -470,9 +501,12 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
      */
     public function minus(Number $other)
     {
-        return $this->coerceNumber($other, function ($num1, $num2) {
+        static $op;
+        $op ??= static function ($num1, $num2) {
             return $num1 - $num2;
-        });
+        };
+
+        return $this->coerceNumber($other, $op);
     }
 
     /**
@@ -578,7 +612,7 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
      *
      * @return string
      */
-    public function output(Compiler $compiler = null)
+    public function output(?Compiler $compiler = null)
     {
         $dimension = round($this->dimension, self::PRECISION);
 
@@ -646,6 +680,11 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
      */
     private function coerceUnits(Number $other, $operation)
     {
+        // Fast path: identical units (including both unitless) need no conversion.
+        if ($this->numeratorUnits === $other->numeratorUnits && $this->denominatorUnits === $other->denominatorUnits) {
+            return $operation($this->dimension, $other->dimension);
+        }
+
         if (!$this->unitless()) {
             $num1 = $this->dimension;
             $num2 = $other->valueInUnits($this->numeratorUnits, $this->denominatorUnits);
@@ -654,7 +693,7 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
             $num2 = $other->dimension;
         }
 
-        return \call_user_func($operation, $num1, $num2);
+        return $operation($num1, $num2);
     }
 
     /**
@@ -672,7 +711,7 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
     {
         if (
             $this->unitless()
-            || (\count($numeratorUnits) === 0 && \count($denominatorUnits) === 0)
+            || ($numeratorUnits === [] && $denominatorUnits === [])
             || ($this->numeratorUnits === $numeratorUnits && $this->denominatorUnits === $denominatorUnits)
         ) {
             return $this->dimension;

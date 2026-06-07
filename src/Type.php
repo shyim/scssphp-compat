@@ -126,6 +126,10 @@ class Type
     /**
      * @internal
      */
+    const T_USE = 'use';
+    /**
+     * @internal
+     */
     const T_INCLUDE = 'include';
     /**
      * @internal
