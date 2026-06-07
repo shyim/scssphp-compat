@@ -414,6 +414,7 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
             return $this->dimension < $other->dimension;
         }
 
+        /** @var callable(int|float, int|float): bool $op */
         static $op;
         $op ??= static function ($num1, $num2) {
             return $num1 < $num2;
@@ -433,6 +434,7 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
             return $this->dimension <= $other->dimension;
         }
 
+        /** @var callable(int|float, int|float): bool $op */
         static $op;
         $op ??= static function ($num1, $num2) {
             return $num1 <= $num2;
@@ -452,6 +454,7 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
             return $this->dimension > $other->dimension;
         }
 
+        /** @var callable(int|float, int|float): bool $op */
         static $op;
         $op ??= static function ($num1, $num2) {
             return $num1 > $num2;
@@ -471,6 +474,7 @@ class Number extends Node implements \ArrayAccess, \JsonSerializable
             return $this->dimension >= $other->dimension;
         }
 
+        /** @var callable(int|float, int|float): bool $op */
         static $op;
         $op ??= static function ($num1, $num2) {
             return $num1 >= $num2;

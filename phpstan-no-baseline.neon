@@ -42,5 +42,20 @@ parameters:
             message: "#^Method ScssPhp\\\\ScssPhp\\\\Parser\\:\\:[^(]+\\(\\) has @param-out PHPDoc tag for parameter \\$\\w+ with no value type specified in iterable type array\\.$#"
             path: src/Parser.php
 
+        # The sass:math builtins operate on the untyped SCSS value representation (the `array` half
+        # of `array|Number`), mirroring the Compiler::lib* builtins above. These won't be typed
+        # until the SCSS value model is extracted.
+        -
+            message: "#^Method ScssPhp\\\\ScssPhp\\\\SassModule\\\\MathModule\\:\\:[^(]+\\(\\) has no return type specified\\.$#"
+            path: src/SassModule/MathModule.php
+
+        -
+            message: "#^Method ScssPhp\\\\ScssPhp\\\\SassModule\\\\MathModule\\:\\:[^(]+\\(\\) return type has no value type specified in iterable type array\\.$#"
+            path: src/SassModule/MathModule.php
+
+        -
+            message: "#^Method ScssPhp\\\\ScssPhp\\\\SassModule\\\\MathModule\\:\\:[^(]+\\(\\) has parameter \\$\\w+ with no value type specified in iterable type array\\.$#"
+            path: src/SassModule/MathModule.php
+
 includes:
-    - vendor-bin/phpstan/vendor/phpstan/phpstan/conf/bleedingEdge.neon
+    - vendor/phpstan/phpstan/conf/bleedingEdge.neon
