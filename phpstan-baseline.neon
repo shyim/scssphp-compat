@@ -1789,18 +1789,6 @@ parameters:
 			path: src/Compiler.php
 
 		-
-			rawMessage: Possibly invalid array key type int|null.
-			identifier: offsetAccess.invalidOffset
-			count: 14
-			path: src/Compiler.php
-
-		-
-			rawMessage: Possibly invalid array key type string|null.
-			identifier: offsetAccess.invalidOffset
-			count: 4
-			path: src/Compiler.php
-
-		-
 			rawMessage: Property ScssPhp\ScssPhp\Compiler::$Infinity has no type specified.
 			identifier: missingType.property
 			count: 1
@@ -1953,18 +1941,6 @@ parameters:
 		-
 			rawMessage: 'Call to function is_array() with array will always evaluate to true.'
 			identifier: function.alreadyNarrowedType
-			count: 1
-			path: src/Parser.php
-
-		-
-			rawMessage: Cannot unset property ScssPhp\ScssPhp\Block::$parent because it might have hooks in a subclass.
-			identifier: unset.possiblyHookedProperty
-			count: 1
-			path: src/Parser.php
-
-		-
-			rawMessage: Cannot unset property ScssPhp\ScssPhp\Block\ContentBlock::$child because it might have hooks in a subclass.
-			identifier: unset.possiblyHookedProperty
 			count: 1
 			path: src/Parser.php
 
@@ -2205,18 +2181,6 @@ parameters:
 		-
 			rawMessage: 'Method ScssPhp\ScssPhp\Util::checkRange() has parameter $value with no value type specified in iterable type array.'
 			identifier: missingType.iterableValue
-			count: 1
-			path: src/Util.php
-
-		-
-			rawMessage: 'Parameter #1 $codepoint of function chr expects int<0, 255>, int given.'
-			identifier: argument.type
-			count: 1
-			path: src/Util.php
-
-		-
-			rawMessage: 'Parameter #1 $codepoint of function chr expects int<0, 255>, int<-2097151, 2097151> given.'
-			identifier: argument.type
 			count: 1
 			path: src/Util.php
 

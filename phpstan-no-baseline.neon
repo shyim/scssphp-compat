@@ -1,5 +1,10 @@
 parameters:
     level: 8
+    # Analyse against the whole supported PHP range so results are deterministic regardless of the
+    # PHP version running PHPStan (the CI runner and developer machines may differ).
+    phpVersion:
+        min: 80200
+        max: 80599
     inferPrivatePropertyTypeFromConstructor: true
     treatPhpDocTypesAsCertain: false
     paths:
